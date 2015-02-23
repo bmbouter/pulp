@@ -170,6 +170,9 @@ popd
 %endif # with_python3
 
 %changelog
+* Mon Feb 23 2015 Brian Bouterse 3.0.24-6.pulp
+- Backports fix for 1195361 (bbouters@redhat.com)
+
 * Tue Feb 03 2015 Brian Bouterse 3.0.24-5.pulp
 - 1174361 - Revert patch introduced with b0f2319. It is not needed.
   (bbouters@redhat.com)
