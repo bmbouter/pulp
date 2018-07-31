@@ -1,12 +1,14 @@
 """
 Repository related Django models.
 """
+from collections import defaultdict
 from contextlib import suppress
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.db import transaction
 
 from .base import Model, MasterModel
-from .content import Content
 from .generic import Notes, GenericKeyValueRelation
 from .task import CreatedResource
 
@@ -29,16 +31,13 @@ class Repository(Model):
     Relations:
 
         notes (GenericKeyValueRelation): Arbitrary repository properties.
-        content (models.ManyToManyField): Associated content.
     """
     name = models.TextField(db_index=True, unique=True)
     description = models.TextField(blank=True)
     last_version = models.PositiveIntegerField(default=0)
 
     notes = GenericKeyValueRelation(Notes)
-
-    content = models.ManyToManyField('Content', through='RepositoryContent',
-                                     related_name='repositories')
+    content = GenericRelation('RepositoryContent')
 
     class Meta:
         verbose_name_plural = 'repositories'
@@ -166,8 +165,9 @@ class RepositoryContent(Model):
         version_removed (models.ForeignKey): The RepositoryVersion which removed the referenced
             Content.
     """
-    content = models.ForeignKey('Content', on_delete=models.CASCADE,
-                                related_name='version_memberships')
+    object_id = models.PositiveIntegerField()
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content = GenericForeignKey('content_type', 'object_id')
     repository = models.ForeignKey(Repository, on_delete=models.CASCADE)
     version_added = models.ForeignKey('RepositoryVersion', related_name='added_memberships',
                                       on_delete=models.CASCADE)
@@ -176,8 +176,8 @@ class RepositoryContent(Model):
                                         on_delete=models.CASCADE)
 
     class Meta:
-        unique_together = (('repository', 'content', 'version_added'),
-                           ('repository', 'content', 'version_removed'))
+        unique_together = (('repository', 'content_type', 'object_id', 'version_added'),
+                           ('repository', 'content_type', 'object_id', 'version_removed'))
 
 
 class RepositoryVersion(Model):
@@ -222,19 +222,16 @@ class RepositoryVersion(Model):
     @property
     def content(self):
         """
-        Returns a set of content for a repository version
+        Returns a dictionary of QuerySet objects keyed on the model type
 
         Returns:
-            django.db.models.QuerySet: The content that is contained within this version.
+            A dict of :class:`django.db.models.QuerySet`: Each QuerySet matches a single model type.
+            The key is the model type() string.
 
         Examples:
             >>> repository_version = ...
             >>>
             >>> for content in repository_version.content:
-            >>>     content = content.cast()  # optional downcast.
-            >>>     ...
-            >>>
-            >>> for content in FileContent.objects.filter(pk__in=repository_version.content):
             >>>     ...
             >>>
         """
@@ -242,7 +239,11 @@ class RepositoryVersion(Model):
             repository=self.repository, version_added__number__lte=self.number).exclude(
             version_removed__number__lte=self.number
         )
-        return Content.objects.filter(version_memberships__in=relationships)
+        repo_content_by_type = defaultdict(set)
+        for relationship in relationships:
+            1+1
+            1+1
+        return repo_content_by_type
 
     def contains(self, content):
         """
@@ -336,10 +337,10 @@ class RepositoryVersion(Model):
 
     def add_content(self, content):
         """
-        Add a content unit to this version.
+        Add content units to this version. All content units must be the same type.
 
         Args:
-           content (django.db.models.QuerySet): Set of Content to add
+            content (:class:`django.db.models.QuerySet`): Set of Content to add
 
         Raise:
             pulpcore.exception.ResourceImmutableError: if add_content is called on a
@@ -348,15 +349,15 @@ class RepositoryVersion(Model):
         if self.complete:
             raise ResourceImmutableError(self)
 
-        repo_content = []
-        for content_pk in content.exclude(pk__in=self.content).values_list('pk', flat=True):
-            repo_content.append(
-                RepositoryContent(
-                    repository=self.repository,
-                    content_id=content_pk,
-                    version_added=self
+        for content_type_qs in content:
+            for content in content_type_qs.exclude(pk__in=self.content):
+                repo_content.append(
+                    RepositoryContent(
+                        repository=self.repository,
+                        content=content,
+                        version_added=self
+                    )
                 )
-            )
 
         RepositoryContent.objects.bulk_create(repo_content)
 

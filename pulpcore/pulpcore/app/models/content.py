@@ -1,11 +1,13 @@
 """
 Content related Django models.
 """
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
+from django.contrib.contenttypes.models import ContentType
 from django.core import validators
 from django.db import models
 from itertools import chain
 
-from pulpcore.app.models import Model, MasterModel, Notes, GenericKeyValueRelation, storage, fields
+from pulpcore.app.models import Model, Notes, GenericKeyValueRelation, storage, fields
 
 
 class Artifact(Model):
@@ -117,21 +119,19 @@ class Artifact(Model):
         self.file.delete(save=False)
 
 
-class Content(MasterModel):
+class Content(Model):
     """
     A piece of managed content.
 
     Relations:
 
         notes (GenericKeyValueRelation): Arbitrary information stored with the content.
-        artifacts (models.ManyToManyField): Artifacts related to Content through ContentArtifact
     """
-    TYPE = 'content'
-
     notes = GenericKeyValueRelation(Notes)
-    artifacts = models.ManyToManyField(Artifact, through='ContentArtifact')
+    artifacts = GenericRelation('pulp_app.ContentArtifact')
 
     class Meta:
+        abstract = True
         verbose_name_plural = 'content'
         unique_together = ()
 
@@ -169,11 +169,13 @@ class ContentArtifact(Model):
     Artifact is protected from deletion if it's present in a ContentArtifact relationship.
     """
     artifact = models.ForeignKey(Artifact, on_delete=models.PROTECT, null=True)
-    content = models.ForeignKey(Content, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    content = GenericForeignKey('content_type', 'object_id')
     relative_path = models.CharField(max_length=256)
 
     class Meta:
-        unique_together = ('content', 'relative_path')
+        unique_together = ('content_type', 'object_id', 'relative_path')
 
 
 class RemoteArtifact(Model):
