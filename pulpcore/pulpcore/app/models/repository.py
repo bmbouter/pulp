@@ -5,8 +5,7 @@ from collections import defaultdict
 from contextlib import suppress
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
-from django.db import models
-from django.db import transaction
+from django.db import models, transaction
 
 from .base import Model, MasterModel
 from .generic import Notes, GenericKeyValueRelation
@@ -222,28 +221,35 @@ class RepositoryVersion(Model):
     @property
     def content(self):
         """
-        Returns a dictionary of QuerySet objects keyed on the model type
+        Returns a set of QuerySet objects, each one matching all units for a single content type.
 
         Returns:
-            A dict of :class:`django.db.models.QuerySet`: Each QuerySet matches a single model type.
-            The key is the model type() string.
+            A list of :class:`django.db.models.QuerySet`: Each QuerySet matches a single model type.
 
         Examples:
             >>> repository_version = ...
             >>>
-            >>> for content in repository_version.content:
-            >>>     ...
-            >>>
+            >>> for content_qs in repository_version.content:
+            >>>     for content in content_qs:  # this loops over one type of content only
+            >>>         ...
         """
         relationships = RepositoryContent.objects.filter(
             repository=self.repository, version_added__number__lte=self.number).exclude(
             version_removed__number__lte=self.number
-        )
+        ).values("content_type_id", "object_id")
+
         repo_content_by_type = defaultdict(set)
         for relationship in relationships:
-            1+1
-            1+1
-        return repo_content_by_type
+            content_type_id = relationship['content_type_id']
+            repo_content_by_type[content_type_id].add(relationship['object_id'])
+
+        querysets_to_return = set()
+        for content_type_id, id_list in repo_content_by_type.items():
+            content_model = ContentType.objects.get(id=content_type_id).model_class()
+            qs = content_model.objects.filter(id__in=id_list)
+            querysets_to_return.add(qs)
+
+        return querysets_to_return
 
     def contains(self, content):
         """
@@ -337,10 +343,15 @@ class RepositoryVersion(Model):
 
     def add_content(self, content):
         """
-        Add content units to this version. All content units must be the same type.
+        Add content units to this version.
+
+        One or more :class:`django.db.models.QuerySet` can be passed in to `content`. All units
+        matched by all :class:`~django.db.models.QuerySet` objects are associated.
 
         Args:
-            content (:class:`django.db.models.QuerySet`): Set of Content to add
+            content (:class:`django.db.models.QuerySet` or an iterable of
+                :class:`django.db.models.QuerySet`): All units matched by all QuerySet objects are
+                associated.
 
         Raise:
             pulpcore.exception.ResourceImmutableError: if add_content is called on a
@@ -349,8 +360,24 @@ class RepositoryVersion(Model):
         if self.complete:
             raise ResourceImmutableError(self)
 
+        if isinstance(content, models.query.QuerySet):
+            content = (content,)
+
+        repo_content = []
+        existing_content = {}
+        for existing_content_qs in self.content:
+            existing_content[existing_content_qs.model] = existing_content_qs.\
+                values_list('pk', flat=True)
+
         for content_type_qs in content:
-            for content in content_type_qs.exclude(pk__in=self.content):
+            try:
+                existing_content_one_type = existing_content[content_type_qs.model]
+            except KeyError:
+                pass
+            else:
+                content_type_qs = content_type_qs.exclude(pk__in=existing_content_one_type)
+
+            for content in content_type_qs:
                 repo_content.append(
                     RepositoryContent(
                         repository=self.repository,

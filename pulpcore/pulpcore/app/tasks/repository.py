@@ -79,6 +79,8 @@ def add_and_remove(repository_pk, add_content_units, remove_content_units):
         remove_content_units (list): List of PKs for:class:`~pulpcore.app.models.Content` that
             should be removed from the previous Repository Version for this Repository.
     """
+    import pydevd
+    pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
     repository = models.Repository.objects.get(pk=repository_pk)
 
     with models.RepositoryVersion.create(repository) as new_version:

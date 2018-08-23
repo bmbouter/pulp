@@ -11,8 +11,7 @@ from pulpcore.app.serializers import base, fields
 UNIQUE_ALGORITHMS = ['sha256', 'sha384', 'sha512']
 
 
-class ContentSerializer(base.MasterModelSerializer):
-    _href = base.DetailIdentityField()
+class ContentSerializer(base.ModelSerializer):
 
     notes = base.GenericKeyValueRelatedField(
         help_text=_('A mapping of string keys to string values, for storing notes on this object.'),
@@ -27,7 +26,7 @@ class ContentSerializer(base.MasterModelSerializer):
 
     class Meta:
         model = models.Content
-        fields = base.MasterModelSerializer.Meta.fields + ('notes', 'artifacts')
+        fields = base.ModelSerializer.Meta.fields + ('notes', 'artifacts')
 
 
 class ArtifactSerializer(base.ModelSerializer):

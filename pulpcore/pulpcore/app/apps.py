@@ -69,6 +69,8 @@ class PulpPluginAppConfig(apps.AppConfig):
         self.named_viewsets = None
         # Mapping of serializer names to serializers
         self.named_serializers = None
+        # Mapping of viewset names to model names
+        self.viewsets_to_model_names = None
 
     def ready(self):
         self.import_viewsets()
@@ -114,6 +116,9 @@ class PulpPluginAppConfig(apps.AppConfig):
                     if (obj is not NamedModelViewSet and issubclass(obj, NamedModelViewSet)):
                         model = obj.queryset.model
                         self.named_viewsets[model] = obj
+                        viewset_classpath = '{name}.{obj}'.format(
+                            name=viewsets_module_name, obj=objname)
+                        self.viewsets_to_model_names[viewset_classpath] = model
                 except TypeError:
                     # obj isn't a class, issubclass exploded but obj can be safely filtered out
                     continue

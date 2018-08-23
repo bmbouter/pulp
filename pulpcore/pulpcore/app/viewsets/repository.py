@@ -275,6 +275,8 @@ class RepositoryVersionViewSet(NamedModelViewSet,
         add_content_units = []
         remove_content_units = []
         repository = self.get_parent_object()
+        import pydevd
+        pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
 
         if 'add_content_units' in request.data:
             for url in request.data['add_content_units']:

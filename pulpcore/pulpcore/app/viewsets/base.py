@@ -9,6 +9,7 @@ from pulpcore.app.response import OperationPostponedResponse
 from pulpcore.app.serializers import AsyncOperationResponseSerializer
 from pulpcore.tasking.tasks import enqueue_with_reservation
 
+from django.apps import apps as django_apps
 from django.urls import resolve, Resolver404
 from django.core.exceptions import FieldError, ValidationError
 from django_filters.rest_framework import filterset
@@ -113,16 +114,18 @@ class NamedModelViewSet(viewsets.GenericViewSet):
         return self.serializer_class
 
     @staticmethod
-    def get_resource(uri, model):
+    def get_resource(uri, model=None):
         """
-        Resolve a resource URI to an instance of the resource.
+        Resolve a resource URI to an instance of the model
 
         Provides a means to resolve an href passed in a POST body to an
         instance of the resource.
 
         Args:
             uri (str): A resource URI.
-            model (django.models.Model): A model class.
+            model (:class:`django.models.Model`): An optional model type expected for this resource.
+                If specified and the uri resolves to a resource of a different type a
+                :class:`rest_framework.exceptions.ValidationError` is raised..
 
         Returns:
             django.models.Model: The resource fetched from the DB.
@@ -134,6 +137,10 @@ class NamedModelViewSet(viewsets.GenericViewSet):
             match = resolve(urlparse(uri).path)
         except Resolver404:
             raise DRFValidationError(detail=_('URI not valid: {u}').format(u=uri))
+
+        app_name = match._func_path.split('.')[0]
+        plugin_app = django_apps.app_configs[app_name]
+
         if 'pk' in match.kwargs:
             kwargs = {'pk': match.kwargs['pk']}
         else:
@@ -145,6 +152,10 @@ class NamedModelViewSet(viewsets.GenericViewSet):
                     kwargs[key] = value
         try:
             return model.objects.get(**kwargs)
+        except AttributeError:
+            import pydevd
+            pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
+            1+1
         except model.MultipleObjectsReturned:
             raise DRFValidationError(detail=_('URI {u} matches more than one {m}.').format(
                 u=uri, m=model._meta.model_name))
@@ -156,6 +167,12 @@ class NamedModelViewSet(viewsets.GenericViewSet):
         except FieldError:
             raise DRFValidationError(detail=_('URI {u} is not a valid {m}.').format(
                 u=uri, m=model._meta.model_name))
+        else:
+            if model:
+                if not isinstance(model, obj):
+                    msg = _('{uri} is not of type {model}'.format(uri=uri, model=model))
+                    raise DRFValidationError(detail=msg)
+        return obj
 
     @classmethod
     def is_master_viewset(cls):
