@@ -343,7 +343,7 @@ class RepositoryVersion(Model):
 
     def add_content(self, content):
         """
-        Add content units to this version.
+        Add content to this version.
 
         One or more :class:`django.db.models.QuerySet` can be passed in to `content`. All units
         matched by all :class:`~django.db.models.QuerySet` objects are associated.
@@ -390,24 +390,35 @@ class RepositoryVersion(Model):
 
     def remove_content(self, content):
         """
-        Remove content from the repository.
+        Remove content from this version.
+
+        One or more :class:`django.db.models.QuerySet` can be passed in to `content`. All units
+        matched by all :class:`~django.db.models.QuerySet` objects are unassociated.
 
         Args:
-            content (django.db.models.QuerySet): Set of Content to remove
+            content (:class:`django.db.models.QuerySet` or an iterable of
+                :class:`django.db.models.QuerySet`): All units matched by all QuerySet objects are
+                unassociated.
 
         Raise:
             pulpcore.exception.ResourceImmutableError: if remove_content is called on a
                 complete RepositoryVersion
         """
-
         if self.complete:
             raise ResourceImmutableError(self)
 
-        q_set = RepositoryContent.objects.filter(
-            repository=self.repository,
-            content_id__in=content,
-            version_removed=None)
-        q_set.update(version_removed=self)
+        if isinstance(content, models.query.QuerySet):
+            content = (content,)
+
+        for content_type_qs in content:
+            pks = content_type_qs.values_list('pk', flat=True)
+            content_type_id = ContentType.objects.get_for_model(content_type_qs.model).pk
+            q_set = RepositoryContent.objects.filter(
+                repository=self.repository,
+                object_id__in=pks,
+                content_type_id=content_type_id,
+                version_removed=None)
+            q_set.update(version_removed=self)
 
     def _squash(self, repo_relations, next_version):
         """
