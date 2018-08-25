@@ -1,3 +1,4 @@
+from collections import defaultdict
 from gettext import gettext as _
 import itertools
 
@@ -272,21 +273,21 @@ class RepositoryVersionViewSet(NamedModelViewSet,
         """
         Queues a task that creates a new RepositoryVersion by adding and removing content units
         """
-        add_content_units = []
-        remove_content_units = []
+        add_content_units = defaultdict(set)
+        remove_content_units = defaultdict(set)
         repository = self.get_parent_object()
-        import pydevd
-        pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
 
         if 'add_content_units' in request.data:
             for url in request.data['add_content_units']:
                 content = self.get_resource(url, Content)
-                add_content_units.append(content.pk)
+                modelname = '.'.join((content._meta.app_label, content._meta.model_name))
+                add_content_units[modelname].add(content.pk)
 
         if 'remove_content_units' in request.data:
             for url in request.data['remove_content_units']:
                 content = self.get_resource(url, Content)
-                remove_content_units.append(content.pk)
+                modelname = '.'.join((content._meta.app_label, content._meta.model_name))
+                remove_content_units[modelname].add(content.pk)
 
         result = enqueue_with_reservation(
             tasks.repository.add_and_remove, [repository],

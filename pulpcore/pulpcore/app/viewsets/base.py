@@ -4,6 +4,7 @@ from gettext import gettext as _
 from urllib.parse import urlparse
 
 from pulpcore.app import tasks
+from pulpcore.app.apps import PulpAppConfig
 from pulpcore.app.models import MasterModel
 from pulpcore.app.response import OperationPostponedResponse
 from pulpcore.app.serializers import AsyncOperationResponseSerializer
@@ -138,8 +139,7 @@ class NamedModelViewSet(viewsets.GenericViewSet):
         except Resolver404:
             raise DRFValidationError(detail=_('URI not valid: {u}').format(u=uri))
 
-        app_name = match._func_path.split('.')[0]
-        plugin_app = django_apps.app_configs[app_name]
+        model_cls = PulpAppConfig.viewsets_to_model_names[match._func_path]
 
         if 'pk' in match.kwargs:
             kwargs = {'pk': match.kwargs['pk']}
@@ -151,11 +151,7 @@ class NamedModelViewSet(viewsets.GenericViewSet):
                 else:
                     kwargs[key] = value
         try:
-            return model.objects.get(**kwargs)
-        except AttributeError:
-            import pydevd
-            pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
-            1+1
+            obj = model_cls.objects.get(**kwargs)
         except model.MultipleObjectsReturned:
             raise DRFValidationError(detail=_('URI {u} matches more than one {m}.').format(
                 u=uri, m=model._meta.model_name))
@@ -169,7 +165,7 @@ class NamedModelViewSet(viewsets.GenericViewSet):
                 u=uri, m=model._meta.model_name))
         else:
             if model:
-                if not isinstance(model, obj):
+                if not isinstance(obj, model):
                     msg = _('{uri} is not of type {model}'.format(uri=uri, model=model))
                     raise DRFValidationError(detail=msg)
         return obj

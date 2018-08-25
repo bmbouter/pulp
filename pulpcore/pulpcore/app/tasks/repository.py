@@ -1,6 +1,7 @@
 from gettext import gettext as _
 from logging import getLogger
 
+from django.apps import apps
 from django.db import transaction
 
 from pulpcore.app import models
@@ -74,15 +75,26 @@ def add_and_remove(repository_pk, add_content_units, remove_content_units):
     Args:
         repository_pk (int): The primary key for a Repository for which a new Repository Version
             should be created.
-        add_content_units (list): List of PKs for :class:`~pulpcore.app.models.Content` that
-            should be added to the previous Repository Version for this Repository.
-        remove_content_units (list): List of PKs for:class:`~pulpcore.app.models.Content` that
-            should be removed from the previous Repository Version for this Repository.
+        add_content_units (dict): Dictionary keyed on the 'app_name.model_name', e.g.
+            'pulp_file.filecontent' and contains a set of PKs that should be added to a new
+            Repository Version for for Repository(pk=repository_pk).
+        remove_content_units (dict): Dictionary keyed on the 'app_name.model_name', e.g.
+            'pulp_file.filecontent' and contains a set of PKs that should be removed from a new
+            Repository Version for Repository(pk=repository_pk).
     """
-    import pydevd
-    pydevd.settrace('localhost', port=29437, stdoutToServer=True, stderrToServer=True)
     repository = models.Repository.objects.get(pk=repository_pk)
 
     with models.RepositoryVersion.create(repository) as new_version:
-        new_version.add_content(models.Content.objects.filter(pk__in=add_content_units))
-        new_version.remove_content(models.Content.objects.filter(pk__in=remove_content_units))
+        querysets_to_add = set()
+        for model_path, pks in add_content_units.items():
+            model = apps.get_model(*model_path.split('.'))
+            querysets_to_add.add(model.objects.filter(pk__in=pks))
+        if querysets_to_add:
+            new_version.add_content(querysets_to_add)
+
+        querysets_to_remove = set()
+        for model_path, pks in remove_content_units.items():
+            model = apps.get_model(*model_path.split('.'))
+            querysets_to_remove.add(model.objects.filter(pk__in=pks))
+        if querysets_to_remove:
+            new_version.remove_content(querysets_to_remove)
