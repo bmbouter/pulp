@@ -1,3 +1,4 @@
+from django.contrib.contenttypes.models import ContentType
 from pulpcore.app.models import Artifact, Content, ContentArtifact, ProgressBar, RepositoryContent
 
 
@@ -7,15 +8,15 @@ def orphan_cleanup():
     This task removes Artifact files from the filesystem as well.
     """
     # Content cleanup
-    content = Content.objects.exclude(pk__in=RepositoryContent.objects.values_list('content_id',
-                                                                                   flat=True))
-    progress_bar = ProgressBar(message='Clean up orphan Content', total=content.count(),
-                               done=0, state='running')
-    progress_bar.save()
-    content.delete()
-    progress_bar.done = progress_bar.total
-    progress_bar.state = 'completed'
-    progress_bar.save()
+    for content_type in ContentType.objects.all():
+        if issubclass(content_type.model_class(), Content):
+            non_orphans = RepositoryContent.objects.filter(
+                version_removed=None).values_list('object_id', flat=True)
+            content_qs = content_type.model_class().objects.exclude(pk__in=non_orphans)
+            msg = 'Clean up orphan content of type: {type}'.format(type=content_type.name)
+            with ProgressBar(message=msg, total=content_qs.count(), done=0, state='running') as pb:
+                content_qs.delete()
+                pb.done = pb.total
 
     # Artifact cleanup
     artifacts = Artifact.objects.exclude(pk__in=ContentArtifact.objects.values_list('artifact_id',
