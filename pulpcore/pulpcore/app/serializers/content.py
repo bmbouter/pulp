@@ -25,7 +25,6 @@ class ContentSerializer(base.ModelSerializer):
     )
 
     class Meta:
-        model = models.Content
         fields = base.ModelSerializer.Meta.fields + ('notes', 'artifacts')
 
 

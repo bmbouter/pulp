@@ -243,11 +243,11 @@ class RepositoryVersion(Model):
             content_type_id = relationship['content_type_id']
             repo_content_by_type[content_type_id].add(relationship['object_id'])
 
-        querysets_to_return = set()
+        querysets_to_return = []
         for content_type_id, id_list in repo_content_by_type.items():
             content_model = ContentType.objects.get(id=content_type_id).model_class()
             qs = content_model.objects.filter(id__in=id_list)
-            querysets_to_return.add(qs)
+            querysets_to_return.append(qs)
 
         return querysets_to_return
 
